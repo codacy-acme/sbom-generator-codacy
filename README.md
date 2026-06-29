@@ -5,7 +5,6 @@ A tool for generating a Software Bill of Materials (SBOM) from a Docker image us
 | Tool | Use case |
 |---|---|
 | `sbom_to_codacy.py` | Local script — works with any public Docker image, interactive prompts |
-| `.github/workflows/ecr-sbom.yml` | GitHub Actions — pulls from a private AWS ECR registry on a schedule or manually |
 
 ---
 
