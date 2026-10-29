@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+
+# SBOMs written locally by the script
+sbom-*.json

@@ -151,12 +151,19 @@ def pull_image(image: str):
     ok("Image ready.")
 
 
-def generate_sbom(image: str, sbom_path: str):
+def generate_sbom(image: str, sbom_path: str, source_name: str):
+    """Run Syft, setting metadata.component.name to source_name ('name:tag').
+
+    Codacy checks the upload's tag against the suffix of
+    metadata.component.name and rejects a mismatch. Syft would otherwise write
+    only the bare image name, which Codacy reads as 'latest'.
+    """
     step("Generating SBOM with Syft")
     result = subprocess.run([
         "syft", image,
         "--output", f"cyclonedx-json={sbom_path}",
         "--scope", "all-layers",
+        "--source-name", source_name,
     ])
     if result.returncode != 0:
         err("Syft failed to generate the SBOM.")
@@ -175,22 +182,6 @@ def parse_image_input(image: str) -> tuple[str, str]:
     if ":" in image.split("/")[-1]:
         return image.rsplit(":", 1)
     return image, "latest"
-
-
-def patch_sbom_name(sbom_path: str, base_name: str, tag: str) -> bytes:
-    """Return SBOM bytes with metadata.component.name set to 'base_name:tag'.
-
-    Codacy reads the tag it will store from metadata.component.name:
-    - strips the base name (before ':') for the imageName comparison
-    - uses the suffix after ':' as the tag
-
-    Syft writes only the bare image name (no tag), so without this patch
-    every upload would be stored as 'imageName:latest'.
-    """
-    with open(sbom_path) as f:
-        doc = json.load(f)
-    doc["metadata"]["component"]["name"] = f"{base_name}:{tag}"
-    return json.dumps(doc, separators=(",", ":")).encode()
 
 
 def _form_field(boundary: str, name: str, value: str) -> bytes:
@@ -216,9 +207,7 @@ def upload_to_codacy(sbom_path: str, image_name: str, image_tag: str, cfg: dict)
         print(f"  repository: {cfg['codacy_repo']}")
 
     boundary  = "SBOMUploadBoundary7a2f9e"
-    # Patch metadata.component.name to 'image_name:image_tag' so Codacy stores
-    # the SBOM under the correct specific tag rather than defaulting to 'latest'.
-    sbom_bytes = patch_sbom_name(sbom_path, image_name, image_tag)
+    sbom_bytes = Path(sbom_path).read_bytes()
 
     # Build multipart body: required text fields + file field
     body = _form_field(boundary, "imageName", image_name)
@@ -330,7 +319,7 @@ def main():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         sbom_path = os.path.join(tmpdir, "sbom.json")
-        generate_sbom(image, sbom_path)
+        generate_sbom(image, sbom_path, f"{image_name}:{image_tag}")
 
         safe_tag  = image_tag.replace("/", "-").replace(":", "-")
         local_sbom = Path(f"sbom-{image_name.split('/')[-1]}-{safe_tag}.json")
