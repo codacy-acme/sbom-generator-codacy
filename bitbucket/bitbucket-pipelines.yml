@@ -1,0 +1,52 @@
+# Copy to bitbucket-pipelines.yml at the repository root.
+# Requires a secured repository variable named CODACY_API_TOKEN.
+image: atlassian/default-image:4
+
+definitions:
+  services:
+    docker:
+      memory: 2048
+
+pipelines:
+  branches:
+    main:
+      - step:
+          name: Codacy SBOM
+          services:
+            - docker
+          script:
+            - export IMAGE_NAME=myapp
+            - export IMAGE_VERSION="${BITBUCKET_COMMIT}"
+            - export ORGANIZATION_NAME=my-org
+            - export REPOSITORY_NAME="${BITBUCKET_REPO_SLUG}"
+
+            - docker build -t "${IMAGE_NAME}:${IMAGE_VERSION}" .
+
+            - curl -fsSL https://raw.githubusercontent.com/codacy/codacy-cli-v2/main/codacy-cli.sh -o codacy-cli.sh
+            - chmod +x codacy-cli.sh
+            - ./codacy-cli.sh init
+
+            # One list, kept up to date
+            - docker tag "${IMAGE_NAME}:${IMAGE_VERSION}" "${IMAGE_NAME}:prod"
+            - |
+              ./codacy-cli.sh upload-sbom \
+                -a "${CODACY_API_TOKEN}" \
+                -p bb \
+                -o "${ORGANIZATION_NAME}" \
+                -r "${REPOSITORY_NAME}" \
+                -e production \
+                "${IMAGE_NAME}:prod"
+
+            # A separate list per release: replace the tag and upload above with:
+            # - npm install -g "@codacy/codacy-cloud-cli"
+            # - |
+            #   codacy image bb "${ORGANIZATION_NAME}" "${IMAGE_NAME}" \
+            #     --delete --keep-latest 10 --skip-confirmation
+            # - |
+            #   ./codacy-cli.sh upload-sbom \
+            #     -a "${CODACY_API_TOKEN}" \
+            #     -p bb \
+            #     -o "${ORGANIZATION_NAME}" \
+            #     -r "${REPOSITORY_NAME}" \
+            #     -e production \
+            #     "${IMAGE_NAME}:${IMAGE_VERSION}"
