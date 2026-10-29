@@ -1,0 +1,69 @@
+// Requires a "Secret text" credential with ID codacy-api-token.
+// The agent needs docker and curl.
+pipeline {
+  agent any
+
+  environment {
+    IMAGE_NAME        = 'myapp'
+    IMAGE_VERSION     = "${env.GIT_COMMIT}"
+    ORGANIZATION_NAME = 'my-org'
+    REPOSITORY_NAME   = 'my-repo'
+  }
+
+  stages {
+    stage('Build image') {
+      steps {
+        sh 'docker build -t "${IMAGE_NAME}:${IMAGE_VERSION}" .'
+      }
+    }
+
+    stage('Install Codacy CLI') {
+      steps {
+        sh '''
+          curl -fsSL https://raw.githubusercontent.com/codacy/codacy-cli-v2/main/codacy-cli.sh -o codacy-cli.sh
+          chmod +x codacy-cli.sh
+          ./codacy-cli.sh init
+        '''
+      }
+    }
+
+    // One list, kept up to date
+    stage('Upload SBOM to Codacy') {
+      steps {
+        withCredentials([string(credentialsId: 'codacy-api-token', variable: 'CODACY_API_TOKEN')]) {
+          // Single-quoted so the shell, not Groovy, expands the secret.
+          sh '''
+            docker tag "${IMAGE_NAME}:${IMAGE_VERSION}" "${IMAGE_NAME}:prod"
+            ./codacy-cli.sh upload-sbom \
+              -a "${CODACY_API_TOKEN}" \
+              -p gh \
+              -o "${ORGANIZATION_NAME}" \
+              -r "${REPOSITORY_NAME}" \
+              -e production \
+              "${IMAGE_NAME}:prod"
+          '''
+        }
+      }
+    }
+
+    // A separate list per release: replace the stage above with this one.
+    // stage('Upload SBOM to Codacy (per release)') {
+    //   steps {
+    //     withCredentials([string(credentialsId: 'codacy-api-token', variable: 'CODACY_API_TOKEN')]) {
+    //       sh '''
+    //         npm install -g "@codacy/codacy-cloud-cli"
+    //         codacy image gh "${ORGANIZATION_NAME}" "${IMAGE_NAME}" \
+    //           --delete --keep-latest 10 --skip-confirmation
+    //         ./codacy-cli.sh upload-sbom \
+    //           -a "${CODACY_API_TOKEN}" \
+    //           -p gh \
+    //           -o "${ORGANIZATION_NAME}" \
+    //           -r "${REPOSITORY_NAME}" \
+    //           -e production \
+    //           "${IMAGE_NAME}:${IMAGE_VERSION}"
+    //       '''
+    //     }
+    //   }
+    // }
+  }
+}

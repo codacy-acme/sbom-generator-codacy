@@ -1,0 +1,61 @@
+# Copy to .circleci/config.yml
+# Requires CODACY_API_TOKEN set as a project environment variable or in a context.
+version: 2.1
+
+jobs:
+  codacy-sbom:
+    machine:
+      image: ubuntu-2204:current
+    environment:
+      IMAGE_NAME: myapp
+      ORGANIZATION_NAME: my-org
+      REPOSITORY_NAME: my-repo
+    steps:
+      - checkout
+
+      - run:
+          name: Build image
+          command: docker build -t "${IMAGE_NAME}:${CIRCLE_SHA1}" .
+
+      - run:
+          name: Install Codacy CLI
+          command: |
+            curl -fsSL https://raw.githubusercontent.com/codacy/codacy-cli-v2/main/codacy-cli.sh -o codacy-cli.sh
+            chmod +x codacy-cli.sh
+            ./codacy-cli.sh init
+
+      # One list, kept up to date
+      - run:
+          name: Upload SBOM to Codacy
+          command: |
+            docker tag "${IMAGE_NAME}:${CIRCLE_SHA1}" "${IMAGE_NAME}:prod"
+            ./codacy-cli.sh upload-sbom \
+              -a "${CODACY_API_TOKEN}" \
+              -p gh \
+              -o "${ORGANIZATION_NAME}" \
+              -r "${REPOSITORY_NAME}" \
+              -e production \
+              "${IMAGE_NAME}:prod"
+
+      # A separate list per release: replace the step above with this one.
+      # - run:
+      #     name: Upload SBOM to Codacy (per release)
+      #     command: |
+      #       npm install -g "@codacy/codacy-cloud-cli"
+      #       codacy image gh "${ORGANIZATION_NAME}" "${IMAGE_NAME}" \
+      #         --delete --keep-latest 10 --skip-confirmation
+      #       ./codacy-cli.sh upload-sbom \
+      #         -a "${CODACY_API_TOKEN}" \
+      #         -p gh \
+      #         -o "${ORGANIZATION_NAME}" \
+      #         -r "${REPOSITORY_NAME}" \
+      #         -e production \
+      #         "${IMAGE_NAME}:${CIRCLE_SHA1}"
+
+workflows:
+  sbom:
+    jobs:
+      - codacy-sbom:
+          filters:
+            branches:
+              only: main

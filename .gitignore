@@ -3,3 +3,7 @@ __pycache__/
 
 # SBOMs written locally by the script
 sbom-*.json
+
+# Codacy CLI v2: downloaded launcher and the config `init` creates
+codacy-cli.sh
+.codacy/
